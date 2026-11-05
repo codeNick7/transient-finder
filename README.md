@@ -90,22 +90,6 @@ gantt
 
 ---
 
-## 💬 Testimonials & Research Community Feedback
-
-> *"Transient-Finder addresses the single greatest headache in modern planetary defense: the flood of unconfirmed, short-arc candidates on the NEOCP that turn out to be satellite flares or subtraction dipoles. The 5-pillar heuristic scoring combined with immediate satellite inclination vetoing saves our follow-up network hours of telescope pointing every single night."*  
-> **— Dr. Elena Rostova**, Senior Planetary Defense Researcher & Optical Survey Lead
-
-> *"What impressed our team most is the edge architecture. We can run this directly on an astronomer's MacBook in the observatory control room or at a remote observing station with zero network reliance. The stale-while-revalidate caching and 6-month historical drift simulator make it an indispensable tool for time-domain astronomy."*  
-> **— Prof. Marcus Vance**, Time-Domain Astrophysics & Alert Broker Scientist
-
-> *"Most machine learning models in astronomy are black boxes that fail catastrophically when a Starlink train crosses the field. Transient-Finder's fusion of physics invariants—like the Tisserand parameter and topocentric acceleration bounds—with gradient boosting ensures explainability that astronomers can actually trust."*  
-> **— Dr. Sarah Chen**, Sky Survey Calibration & Data Systems Specialist
-
-> *"The 6-month longitudinal re-validation lab is brilliant. Being able to model ephemeris covariance expansion across elapsed months and see immediate recovery probabilities for older candidates gives us a systematic way to distinguish permanently lost targets from recoverable discoveries."*  
-> **— Liam Thorne**, Robotic Telescope Network Operations Coordinator
-
----
-
 ## 🌟 Key System Capabilities
 
 1. **Multi-Feed Astronomical Ingestion:**
