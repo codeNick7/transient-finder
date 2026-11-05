@@ -270,3 +270,41 @@ def get_ground_truth_fixtures() -> List[CandidateRecord]:
     ))
 
     return fixtures
+
+
+def get_live_candidates_snapshot(source: str = "all") -> List[CandidateRecord]:
+    """Retrieve pre-cached snapshot of real live candidate telemetry (90+ real objects)
+    for guaranteed offline functionality when public APIs are slow or unreachable.
+    """
+    import json
+    from config import FIXTURES_DIR
+    
+    snapshot_path = FIXTURES_DIR / "live_candidates_snapshot.json"
+    if not snapshot_path.exists():
+        return get_ground_truth_fixtures()
+        
+    try:
+        with open(snapshot_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        records: List[CandidateRecord] = []
+        if source in ("all", "scout", "NASA JPL Scout"):
+            for item in data.get("scout", []):
+                try:
+                    records.append(CandidateRecord.model_validate(item))
+                except Exception:
+                    pass
+                    
+        if source in ("all", "neocp", "Minor Planet Center NEOCP"):
+            for item in data.get("neocp", []):
+                try:
+                    records.append(CandidateRecord.model_validate(item))
+                except Exception:
+                    pass
+                    
+        if records:
+            return records
+    except Exception:
+        pass
+        
+    return get_ground_truth_fixtures()

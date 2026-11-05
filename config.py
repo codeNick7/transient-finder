@@ -57,9 +57,9 @@ class SystemConfig(BaseModel):
     fink_sso_cand_url: str = "https://api.ztf.fink-portal.org/api/v1/ssocand"
     
     # Networking
-    request_timeout_seconds: int = 10
+    request_timeout_seconds: int = 15
     user_agent: str = "TransientFinder/1.0 (Public Research Pipeline; contact: research@transient-finder.org)"
-    cache_ttl_seconds: int = 1800  # 30 minutes
+    cache_ttl_seconds: int = 3600  # 60 minutes
     
     # Thresholds
     thresholds: ValidationThresholds = ValidationThresholds()

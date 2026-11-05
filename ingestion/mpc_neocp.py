@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class MPCNEOCPClient(BaseIngestionClient):
     """Client for parsing the live Minor Planet Center NEOCP bulletin feed."""
     
-    def fetch_current_candidates(self) -> List[CandidateRecord]:
+    def fetch_current_candidates(self, force_refresh: bool = False) -> List[CandidateRecord]:
         """Fetch candidates from the Minor Planet Center NEOCP feed."""
-        raw_text = self.fetch_url(CONFIG.mpc_neocp_url)
+        raw_text = self.fetch_url(CONFIG.mpc_neocp_url, force_refresh=force_refresh)
         if not raw_text:
             logger.warning("MPC NEOCP feed returned empty.")
             return []

@@ -17,7 +17,7 @@ from core.models import CandidateRecord, CandidateValidationResult, Revalidation
 from ingestion.jpl_scout import JPLScoutClient
 from ingestion.mpc_neocp import MPCNEOCPClient
 from ingestion.jpl_cad import JPLHistoricalCADClient
-from ingestion.fixtures import get_ground_truth_fixtures
+from ingestion.fixtures import get_ground_truth_fixtures, get_live_candidates_snapshot
 from ai.validator import CandidateValidator
 
 app = FastAPI(
@@ -78,8 +78,8 @@ def get_live_candidates(source: str = Query("all", enum=["all", "scout", "neocp"
         results.extend(neocp_cands)
         
     if not results:
-        # Fallback to fixtures if offline or network blocked
-        return get_ground_truth_fixtures()[:limit]
+        # Fallback to persistent live snapshot if network offline
+        return get_live_candidates_snapshot(source)[:limit]
         
     return results[:limit]
 

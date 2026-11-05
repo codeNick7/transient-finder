@@ -49,9 +49,9 @@ def parse_dec_dms_to_deg(dec_str: str) -> float:
 class JPLScoutClient(BaseIngestionClient):
     """Client for querying the NASA JPL Scout API for unconfirmed NEOCP candidates."""
     
-    def fetch_current_candidates(self) -> List[CandidateRecord]:
+    def fetch_current_candidates(self, force_refresh: bool = False) -> List[CandidateRecord]:
         """Fetch summary of all unconfirmed Near-Earth Object candidates from JPL Scout."""
-        raw_text = self.fetch_url(CONFIG.jpl_scout_url)
+        raw_text = self.fetch_url(CONFIG.jpl_scout_url, force_refresh=force_refresh)
         if not raw_text:
             logger.warning("Scout API returned empty or failed to connect.")
             return []

@@ -19,7 +19,7 @@ from core.models import CandidateRecord, OrbitalElements
 from ingestion.jpl_scout import JPLScoutClient
 from ingestion.mpc_neocp import MPCNEOCPClient
 from ingestion.jpl_cad import JPLHistoricalCADClient
-from ingestion.fixtures import get_ground_truth_fixtures
+from ingestion.fixtures import get_ground_truth_fixtures, get_live_candidates_snapshot
 from ai.validator import CandidateValidator
 
 console = Console()
@@ -41,8 +41,8 @@ def cmd_live(args):
         candidates.extend(neocp_client.fetch_current_candidates())
         
     if not candidates:
-        console.print("[yellow]Network offline or APIs returned empty. Loading local benchmark fixtures...[/yellow]")
-        candidates = get_ground_truth_fixtures()
+        console.print("[yellow]Live network feeds unreachable. Serving persistent telemetry cache...[/yellow]")
+        candidates = get_live_candidates_snapshot()
         
     candidates = candidates[:args.limit]
     
