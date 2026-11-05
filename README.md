@@ -1,6 +1,7 @@
 # ☄️ Transient-Finder: Near-Earth Object (NEO) & Sky Survey AI Validation System
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://transient-finder.streamlit.app)
 [![Tests Passing](https://img.shields.io/badge/tests-22%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Edge AI Ready](https://img.shields.io/badge/Edge%20AI-Laptop%20Native-orange.svg)]()
@@ -8,6 +9,31 @@
 An edge-optimized, AI-driven astronomical analysis system engineered to ingest, evaluate, and cross-validate unconfirmed **Near-Earth Object (NEO)** candidates and sky survey transients from NASA JPL, the Minor Planet Center (MPC), and modern time-domain brokers (ZTF / Fink / LSST).
 
 Designed specifically to run locally on high-performance laptops (e.g. MacBook Pro Intel/Apple Silicon, 16GB RAM) without requiring heavy cloud multi-GPU clusters.
+
+---
+
+## 🌐 Live Interactive Cloud Deployment
+
+Experience the real-time pipeline live in your browser:
+
+<p align="center">
+  <a href="https://transient-finder.streamlit.app" target="_blank">
+    <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Open Streamlit App" height="36">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://transient-finder.streamlit.app" target="_blank">
+    <img src="https://img.shields.io/badge/🚀%20Launch%20Live%20App-transient--finder.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Launch Live App" height="36">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://transient-finder.streamlit.app" target="_blank">
+    <img src="docs/assets/live_demo.gif" alt="Transient-Finder Live Streamlit Demo" width="96%">
+  </a>
+</p>
+
+> [!TIP]
+> **Try it live:** Navigate to [**https://transient-finder.streamlit.app**](https://transient-finder.streamlit.app) to interact with live telemetry from NASA JPL CNEOS Scout & MPC NEOCP, rotate 3D heliocentric orbits, inspect 5-pillar heuristic radar charts, and audit 6-month historical candidate recovery tracks.
 
 ---
 
@@ -139,13 +165,25 @@ source .venv/bin/activate.fish
 pip install -r requirements.txt
 ```
 
-### 2. Launch the Interactive Web Dashboard (Streamlit)
-Run the browser dashboard to visualize live candidates, 3D orbits, heuristic radar charts, and false positive diagnostics:
+### 2. Launch or Access the Interactive Web Dashboard (Streamlit)
+
+- **Public Cloud Deployment:** [**https://transient-finder.streamlit.app**](https://transient-finder.streamlit.app)
+- **Local Launch:** Run the browser dashboard locally on your laptop:
 
 ```fish
 ./.venv/bin/streamlit run ui/app.py
 ```
 Open your browser at `http://localhost:8501`.
+
+#### Cloud & Local UI Gallery
+
+| Live Candidate Stream & 3D Orbit | 6-Month Longitudinal Re-Validation Lab |
+| :---: | :---: |
+| ![3D Orbit & AI Diagnostics](docs/assets/orbit_3d_diagnostics.png) | ![6-Month Re-Validation](docs/assets/revalidation_lab.png) |
+
+| Scientific Heuristic Breakdown | Ground-Truth & False-Positive Benchmarks |
+| :---: | :---: |
+| ![Heuristic Pillars](docs/assets/heuristics_breakdown.png) | ![Benchmark Metrics](docs/assets/benchmark_metrics.png) |
 
 ### 3. Run the Command-Line Interface (CLI)
 Perform rapid terminal-based audits using the `rich` CLI:
