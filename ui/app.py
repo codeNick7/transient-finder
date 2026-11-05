@@ -43,6 +43,14 @@ def get_system_components():
 validator, scout_client, neocp_client, cad_client = get_system_components()
 
 
+def render_dataframe(df):
+    """Render DataFrame using width='stretch' for newer Streamlit, falling back to use_container_width=True."""
+    try:
+        st.dataframe(df, width="stretch")
+    except TypeError:
+        st.dataframe(df, use_container_width=True)
+
+
 def plot_heuristic_radar(breakdown):
     categories = [
         "Astrometric Consistency",
@@ -230,7 +238,7 @@ if app_mode == "🛰️ Live Survey Stream (NASA & MPC)":
             "RMS (arcsec)": f"{c.rms_residual_arcsec:.2f}"
         })
     df_summary = pd.DataFrame(summary_data)
-    st.dataframe(df_summary, use_container_width=True)
+    render_dataframe(df_summary)
 
     st.markdown("### Candidate AI Deep-Dive & Diagnostics")
     selected_id = st.selectbox("Select Candidate to Validate:", [c.candidate_id for c in candidates])
@@ -290,7 +298,7 @@ elif app_mode == "⏳ 6-Month Re-Validation Lab":
             "Historical Audit Notes": rep.historical_notes
         })
     df_reval = pd.DataFrame(reval_reports)
-    st.dataframe(df_reval, use_container_width=True)
+    render_dataframe(df_reval)
 
     st.markdown("### Ephemeris Drift & Recovery Analysis")
     st.caption("How positional uncertainty grows over 6 months depending on observational baseline arc length:")
