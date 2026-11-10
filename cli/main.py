@@ -134,6 +134,70 @@ def cmd_benchmark(args):
     console.print(table)
 
 
+def cmd_patch(args):
+    """Query and analyze candidates & distant transients in an on-demand sky patch."""
+    target_str = f" | Target: [yellow]{args.target}[/yellow]" if args.target else ""
+    console.print(Panel(
+        f"[bold cyan]{CONFIG.app_name}[/bold cyan] - On-Demand Sky Patch Analysis\n"
+        f"[dim]Center: RA {args.ra:.3f}°, Dec {args.dec:.3f}° | FOV Radius: {args.radius:.2f}°{target_str}[/dim]",
+        expand=False
+    ))
+
+    from ingestion.sky_patch import SkyPatchService
+    patch_service = SkyPatchService()
+
+    with console.status("[bold green]Querying survey streams, JPL Horizons, and transient catalogs..."):
+        result = patch_service.query_sky_patch(
+            ra_deg=args.ra,
+            dec_deg=args.dec,
+            radius_deg=args.radius,
+            target_id=args.target,
+            epoch=args.epoch
+        )
+
+    console.print(
+        f"[bold]Detections Summary:[/bold] Total Found: [cyan]{result.total_detected}[/cyan] | "
+        f"NEOs: [green]{result.neo_count}[/green] | "
+        f"Distant Transients: [magenta]{result.distant_transient_count}[/magenta] | "
+        f"Main Belt Asteroids: [blue]{result.asteroid_count}[/blue] | "
+        f"Artifacts Vetoed: [red]{result.artifact_count}[/red]\n"
+    )
+
+    table = Table(title=f"Sky Patch Detections (RA: {args.ra:.2f}°, Dec: {args.dec:.2f}°, Radius: {args.radius:.2f}°)")
+    table.add_column("Designation", style="bold")
+    table.add_column("Sep (arcmin)", justify="right")
+    table.add_column("Category", style="cyan")
+    table.add_column("V Mag", justify="right")
+    table.add_column("Motion (deg/d)", justify="right")
+    table.add_column("AI Verdict", style="bold")
+    table.add_column("Confidence", justify="right")
+    table.add_column("Astrophysical Profile", style="dim")
+
+    for obj in result.objects:
+        cand = obj.candidate
+        val = obj.validation
+        status_color = "green" if "VALIDATED" in val.status.value or "IDENTIFIED" in val.status.value else (
+            "magenta" if "DISTANT" in val.status.value else (
+                "red" if "BOGUS" in val.status.value or "REJECTED" in val.status.value else "yellow"
+            )
+        )
+        nature = (
+            val.transient_properties.transient_type if val.transient_properties and val.transient_properties.transient_type
+            else (val.orbit_classification if val.orbit_classification and val.orbit_classification != "UNKNOWN_SHORT_ARC" else obj.category.value)
+        )
+        table.add_row(
+            cand.candidate_id,
+            f"{obj.angular_separation_arcmin:.1f}'",
+            obj.category.value,
+            f"{cand.v_mag:.1f}" if cand.v_mag else "N/A",
+            f"{cand.motion_rate_deg_day:.3f}",
+            f"[{status_color}]{val.status.value}[/{status_color}]",
+            f"{val.composite_confidence_score:.1f}%",
+            str(nature)
+        )
+    console.print(table)
+
+
 def main():
     parser = argparse.ArgumentParser(description=f"{CONFIG.app_name} CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -149,6 +213,14 @@ def main():
     # benchmark command
     p_bench = subparsers.add_parser("benchmark", help="Run benchmark suite on real & bogus candidates")
 
+    # patch command
+    p_patch = subparsers.add_parser("patch", help="Query and analyze sky patch (RA & Dec) for NEOs & distant transients")
+    p_patch.add_argument("--ra", type=float, required=True, help="Central Right Ascension in degrees (0-360)")
+    p_patch.add_argument("--dec", type=float, required=True, help="Central Declination in degrees (-90 to +90)")
+    p_patch.add_argument("--radius", type=float, default=1.0, help="Search cone radius in degrees (default: 1.0)")
+    p_patch.add_argument("--target", type=str, default=None, help="Optional target identifier (e.g. '1998 KY26')")
+    p_patch.add_argument("--epoch", type=str, default=None, help="Observation date or epoch (e.g. '2024-06-01')")
+
     args = parser.parse_args()
     if args.command == "live":
         cmd_live(args)
@@ -156,6 +228,8 @@ def main():
         cmd_historical(args)
     elif args.command == "benchmark":
         cmd_benchmark(args)
+    elif args.command == "patch":
+        cmd_patch(args)
 
 
 if __name__ == "__main__":

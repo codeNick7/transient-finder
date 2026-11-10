@@ -17,10 +17,12 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 from config import CONFIG
-from core.models import CandidateRecord, OrbitalElements
+from core.models import CandidateRecord, OrbitalElements, TransientCategory, DetectionStatus
 from ingestion.jpl_scout import JPLScoutClient
 from ingestion.mpc_neocp import MPCNEOCPClient
 from ingestion.jpl_cad import JPLHistoricalCADClient
+from ingestion.jpl_horizons import JPLHorizonsClient
+from ingestion.sky_patch import SkyPatchService
 from ingestion.fixtures import get_ground_truth_fixtures, get_live_candidates_snapshot
 from ai.validator import CandidateValidator
 
@@ -38,9 +40,11 @@ def get_system_components():
     scout = JPLScoutClient()
     neocp = MPCNEOCPClient()
     cad = JPLHistoricalCADClient()
-    return val, scout, neocp, cad
+    patch = SkyPatchService()
+    horizons = JPLHorizonsClient()
+    return val, scout, neocp, cad, patch, horizons
 
-validator, scout_client, neocp_client, cad_client = get_system_components()
+validator, scout_client, neocp_client, cad_client, sky_patch_service, horizons_client = get_system_components()
 
 
 def render_dataframe(df):
@@ -155,6 +159,94 @@ def plot_3d_orbit(candidate: CandidateRecord):
     return fig
 
 
+def plot_sky_patch_map(ra_center: float, dec_center: float, radius_deg: float, objects: list):
+    """Plot interactive 2D celestial sky map of the searched cone with detected NEOs and distant transients."""
+    fig = go.Figure()
+
+    # 1. Search Cone Boundary Circle
+    theta = np.linspace(0, 2 * np.pi, 120)
+    cos_dec = max(0.05, math.cos(math.radians(dec_center)))
+    fov_ra = (ra_center + (radius_deg / cos_dec) * np.cos(theta)) % 360.0
+    fov_dec = np.clip(dec_center + radius_deg * np.sin(theta), -90.0, 90.0)
+
+    fig.add_trace(go.Scatter(
+        x=fov_ra,
+        y=fov_dec,
+        mode="lines",
+        line=dict(color="#FF4B4B", width=2, dash="dash"),
+        name=f"Search Cone (r = {radius_deg:.2f}°)",
+        hoverinfo="skip"
+    ))
+
+    # 2. Field Center Crosshair
+    fig.add_trace(go.Scatter(
+        x=[ra_center],
+        y=[dec_center],
+        mode="markers",
+        marker=dict(symbol="cross", size=14, color="#FF4B4B", line=dict(width=2, color="#FFFFFF")),
+        name="Field Center (Crosshair)",
+        text=[f"Cone Center: RA {ra_center:.3f}°, Dec {dec_center:.3f}°"],
+        hoverinfo="text"
+    ))
+
+    # 3. Categorized Celestial Objects in Patch
+    CATEGORY_STYLES = {
+        "IDENTIFIED_NEO": {"symbol": "star", "color": "#00E676", "size": 16, "name": "Identified NEO (Known)"},
+        "NEO_CANDIDATE": {"symbol": "diamond", "color": "#FF9100", "size": 13, "name": "NEO Candidate (Unconfirmed)"},
+        "MAIN_BELT_ASTEROID": {"symbol": "circle", "color": "#29B6F6", "size": 11, "name": "Main Belt Asteroid"},
+        "DISTANT_SUPERNOVA": {"symbol": "hexagon", "color": "#E040FB", "size": 14, "name": "Distant Supernova (SN)"},
+        "DISTANT_AGN_FLARE": {"symbol": "square", "color": "#7C4DFF", "size": 13, "name": "Distant AGN / Blazar Flare"},
+        "DISTANT_KILONOVA_OR_GRB": {"symbol": "diamond-tall", "color": "#FF4081", "size": 14, "name": "Kilonova / GRB Counterpart"},
+        "CATACLYSMIC_VARIABLE": {"symbol": "cross", "color": "#FFD600", "size": 12, "name": "Cataclysmic Variable (CV)"},
+        "ARTIFICIAL_SATELLITE_OR_DEBRIS": {"symbol": "triangle-up", "color": "#D50000", "size": 13, "name": "Space Debris / Satellite Streak"},
+        "IMAGE_ARTIFACT_OR_BOGUS": {"symbol": "x", "color": "#9E9E9E", "size": 11, "name": "Survey Artifact / Bogus"}
+    }
+
+    for cat_key, style in CATEGORY_STYLES.items():
+        cat_objs = [o for o in objects if o.category.value == cat_key]
+        if cat_objs:
+            xs = [o.candidate.apparent_ra_deg for o in cat_objs]
+            ys = [o.candidate.apparent_dec_deg for o in cat_objs]
+            hover_texts = [
+                f"<b>{o.candidate.candidate_id}</b><br>"
+                f"Separation: {o.angular_separation_arcmin:.1f}' ({o.angular_separation_deg:.3f}°)<br>"
+                f"Category: {o.category.value}<br>"
+                f"AI Verdict: {o.validation.status.value}<br>"
+                f"Confidence: {o.validation.composite_confidence_score:.1f}%<br>"
+                f"V Mag: {o.candidate.v_mag if o.candidate.v_mag else 'N/A'}<br>"
+                f"Motion: {o.candidate.motion_rate_deg_day:.3f} deg/day"
+                for o in cat_objs
+            ]
+            fig.add_trace(go.Scatter(
+                x=xs,
+                y=ys,
+                mode="markers+text",
+                marker=dict(symbol=style["symbol"], color=style["color"], size=style["size"], line=dict(width=1, color="#FFFFFF")),
+                text=[o.candidate.candidate_id for o in cat_objs],
+                textposition="top center",
+                name=style["name"],
+                hovertext=hover_texts,
+                hoverinfo="text"
+            ))
+
+    margin_deg = radius_deg * 1.35
+    fig.update_layout(
+        title=f"Celestial Sky Patch Map (RA: {ra_center:.2f}°, Dec: {dec_center:.2f}°, Radius: {radius_deg:.2f}°)",
+        xaxis=dict(
+            title="Right Ascension (deg)",
+            range=[(ra_center + margin_deg / cos_dec), (ra_center - margin_deg / cos_dec)]  # Astronomical convention: RA increases right to left
+        ),
+        yaxis=dict(
+            title="Declination (deg)",
+            range=[max(-90.0, dec_center - margin_deg), min(90.0, dec_center + margin_deg)]
+        ),
+        height=480,
+        margin=dict(l=40, r=40, t=50, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.38, xanchor="center", x=0.5)
+    )
+    return fig
+
+
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("☄️ Transient-Finder AI")
 st.sidebar.caption("High-Cadence NEO & Sky Survey AI Validation System")
@@ -164,6 +256,7 @@ app_mode = st.sidebar.radio(
     "Select Workflow Mode:",
     [
         "🛰️ Live Survey Stream (NASA & MPC)",
+        "🔭 On-Demand Sky Patch Search",
         "⏳ 6-Month Re-Validation Lab",
         "🔬 Ground-Truth & False-Positive Benchmarks",
         "🧪 Custom Candidate Simulator",
@@ -270,6 +363,203 @@ if app_mode == "🛰️ Live Survey Stream (NASA & MPC)":
         st.markdown("#### Heliocentric Keplerian Orbit (3D)")
         st.plotly_chart(plot_3d_orbit(target_cand), use_container_width=True)
         st.markdown(f"**Orbit Classification:** `{res.orbit_classification}` | **Astrometric RMS:** `{target_cand.rms_residual_arcsec:.2f} arcsec`")
+
+
+elif app_mode == "🔭 On-Demand Sky Patch Search":
+    st.subheader("🔭 On-Demand Sky Patch Cone Search & Transient Analyzer")
+    st.markdown(
+        "Query multi-feed survey data for any target celestial coordinates (given as an RA and DEC pair). "
+        "The system executes cross-matching against NASA JPL Horizons ephemerides (e.g. `1998 KY26`), "
+        "NASA JPL Scout, MPC NEOCP, and Fink broker alert streams to detect and analyze both **moving NEO candidates** "
+        "and **stationary distant transients** (Supernovae, AGN flares, Kilonovae)."
+    )
+
+    # Preset coordinate picker
+    preset_options = [
+        "🎯 1998 KY26 Earth Close Approach (RA: 315.00°, Dec: -6.27°, Radius: 1.5°)",
+        "💥 Distant Supernova SN 2024ggi Field (RA: 168.03°, Dec: -10.52°, Radius: 2.0°)",
+        "🌌 Distant Blazar OJ 287 Flare Field (RA: 133.70°, Dec: +20.11°, Radius: 1.5°)",
+        "☄️ Ecliptic NEO Survey Strip (RA: 27.50°, Dec: -13.00°, Radius: 2.0°)",
+        "Custom Celestial Coordinates"
+    ]
+    selected_preset = st.selectbox("Choose a Quick Astronomical Survey Field or enter Custom Coordinates:", preset_options)
+
+    if "1998 KY26" in selected_preset:
+        default_ra, default_dec, default_rad = 315.00, -6.27, 1.50
+        default_target = "1998 KY26"
+        default_epoch = "2024-06-01"
+    elif "SN 2024ggi" in selected_preset:
+        default_ra, default_dec, default_rad = 168.03, -10.52, 2.00
+        default_target = ""
+        default_epoch = "2024-04-11"
+    elif "OJ 287" in selected_preset:
+        default_ra, default_dec, default_rad = 133.70, 20.11, 1.50
+        default_target = ""
+        default_epoch = "2024-02-15"
+    elif "Ecliptic" in selected_preset:
+        default_ra, default_dec, default_rad = 27.50, -13.00, 2.00
+        default_target = ""
+        default_epoch = "2026-11-01"
+    else:
+        default_ra, default_dec, default_rad = 180.00, 0.00, 1.00
+        default_target = ""
+        default_epoch = "2026-11-01"
+
+    col_q1, col_q2, col_q3 = st.columns(3)
+    with col_q1:
+        ra_in = st.number_input("Central Right Ascension (RA deg, 0-360):", min_value=0.0, max_value=359.99, value=float(default_ra), step=0.5, format="%.2f")
+    with col_q2:
+        dec_in = st.number_input("Central Declination (DEC deg, -90 to +90):", min_value=-90.0, max_value=90.0, value=float(default_dec), step=0.5, format="%.2f")
+    with col_q3:
+        radius_in = st.slider("Search Cone Radius (deg):", min_value=0.2, max_value=5.0, value=float(default_rad), step=0.1)
+
+    col_opt1, col_opt2, col_opt3 = st.columns([2, 2, 2])
+    with col_opt1:
+        target_in = st.text_input("Target / Object Identifier (Optional, e.g. 1998 KY26):", value=default_target)
+    with col_opt2:
+        epoch_in = st.text_input("Observation Epoch (YYYY-MM-DD):", value=default_epoch)
+    with col_opt3:
+        st.write("")
+        st.write("")
+        query_btn = st.button("🔍 Query & Analyze Sky Patch", type="primary")
+
+    with st.spinner("Querying survey feeds, JPL Horizons, and computing multi-source AI validations..."):
+        patch_result = sky_patch_service.query_sky_patch(
+            ra_deg=ra_in,
+            dec_deg=dec_in,
+            radius_deg=radius_in,
+            target_id=target_in if target_in.strip() else None,
+            epoch=epoch_in,
+            force_refresh=query_btn
+        )
+
+    # Metric KPI cards
+    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+    with col_m1:
+        st.metric("Total Detections", patch_result.total_detected)
+    with col_m2:
+        st.metric("NEOs (Identified & Cand)", patch_result.neo_count)
+    with col_m3:
+        st.metric("Distant Transients", patch_result.distant_transient_count)
+    with col_m4:
+        st.metric("Main Belt Asteroids", patch_result.asteroid_count)
+    with col_m5:
+        st.metric("Artifacts Vetoed", patch_result.artifact_count)
+
+    st.markdown("---")
+
+    # Interactive 2D Sky Map
+    st.markdown("### Celestial Field of View Map")
+    st.plotly_chart(
+        plot_sky_patch_map(ra_in, dec_in, radius_in, patch_result.objects),
+        use_container_width=True
+    )
+
+    # Detections table
+    st.markdown("### Detections in Queried Sky Patch")
+    table_rows = []
+    for obj in patch_result.objects:
+        cand = obj.candidate
+        val = obj.validation
+        profile = (
+            val.transient_properties.transient_type if val.transient_properties and val.transient_properties.transient_type
+            else (val.orbit_classification if val.orbit_classification and val.orbit_classification != "UNKNOWN_SHORT_ARC" else obj.category.value)
+        )
+        table_rows.append({
+            "Designation": cand.candidate_id,
+            "Angular Separation": f"{obj.angular_separation_arcmin:.1f}' ({obj.angular_separation_deg:.3f}°)",
+            "Category": obj.category.value,
+            "V Mag": f"{cand.v_mag:.1f}" if cand.v_mag else "N/A",
+            "Motion (deg/day)": f"{cand.motion_rate_deg_day:.3f}",
+            "AI Verdict": val.status.value,
+            "Confidence": f"{val.composite_confidence_score:.1f}%",
+            "Astrophysical Profile": str(profile),
+            "Source Feed": cand.source_survey
+        })
+    df_patch = pd.DataFrame(table_rows)
+    render_dataframe(df_patch)
+
+    # Deep-Dive Object Inspector
+    if patch_result.objects:
+        st.markdown("### Detailed Astrophysical Deep-Dive")
+        obj_names = [o.candidate.candidate_id for o in patch_result.objects]
+        selected_cand_id = st.selectbox("Select Detected Object to Inspect:", obj_names)
+        sel_obj = next(o for o in patch_result.objects if o.candidate.candidate_id == selected_cand_id)
+        sel_cand = sel_obj.candidate
+        sel_val = sel_obj.validation
+
+        col_dd1, col_dd2, col_dd3, col_dd4 = st.columns(4)
+        with col_dd1:
+            st.metric("AI Verdict", sel_val.status.value)
+        with col_dd2:
+            st.metric("Confidence Score", f"{sel_val.composite_confidence_score:.1f}%")
+        with col_dd3:
+            st.metric("Apparent Motion", f"{sel_cand.motion_rate_deg_day:.3f} deg/d")
+        with col_dd4:
+            st.metric("Angular Separation", f"{sel_obj.angular_separation_arcmin:.1f} arcmin")
+
+        # Branch visualization: NEO vs Distant Transient
+        if sel_obj.category in (
+            TransientCategory.DISTANT_SUPERNOVA,
+            TransientCategory.DISTANT_AGN_FLARE,
+            TransientCategory.DISTANT_KILONOVA_OR_GRB,
+            TransientCategory.CATACLYSMIC_VARIABLE
+        ):
+            col_t_left, col_t_right = st.columns([1, 1])
+            with col_t_left:
+                st.markdown("#### 🌟 Distant Transient Astrophysical Profile")
+                t_props = sel_cand.transient_properties
+                if t_props:
+                    st.markdown(f"- **Transient Classification:** `{t_props.transient_type}`")
+                    st.markdown(f"- **Photometric Brightening Amplitude:** `+{t_props.photometric_amplitude_mag:.1f} mag`")
+                    st.markdown(f"- **Apparent Decay Rate:** `{t_props.decay_rate_mag_day:.3f} mag/day`")
+                    st.markdown(f"- **Estimated Redshift (z):** `{t_props.estimated_redshift_z if t_props.estimated_redshift_z is not None else 'N/A'}`")
+                    st.markdown(f"- **Associated Host Galaxy:** `{t_props.host_galaxy_name or 'Unresolved / Field'}`")
+                    st.markdown(f"- **Host Separation:** `{t_props.host_galaxy_separation_arcsec:.1f} arcsec`" if t_props.host_galaxy_separation_arcsec else "- **Host Separation:** Nuclear / Centered")
+                    st.markdown(f"- **Stationary Astrometric RMS:** `{t_props.stationary_astrometric_sigma:.3f} arcsec`")
+                else:
+                    st.markdown("- **Transient Class:** Extragalactic Optical Transient")
+                    st.markdown(f"- **Apparent Motion:** `{sel_cand.motion_rate_deg_day:.4f} deg/day` (Stationary source)")
+                
+                st.markdown("#### Heuristic Radar Scores")
+                st.plotly_chart(plot_heuristic_radar(sel_val.heuristic_breakdown), use_container_width=True)
+
+            with col_t_right:
+                st.markdown("#### 🔭 Astrophysical Follow-Up Action Checklist")
+                for r in sel_val.recommendations:
+                    st.info(r)
+
+                st.markdown("""
+                **Transient Characterization Summary:**
+                - **Zero Proper Motion:** Celestial coordinates are stationary across multi-epoch images, ruling out asteroids, comets, and orbital debris.
+                - **Large Flux Variability:** Detectable Delta-magnitude indicates non-static astrophysical burst or flare rather than quiescent background star.
+                - **Recommended Action:** Execute immediate Target-of-Opportunity (ToO) spectroscopy on 4m-8m optical telescopes (e.g. Keck, VLT, Gemini) to confirm spectral classification.
+                """)
+        else:
+            # Moving Solar System Object (NEO, PHA, MBA)
+            col_neo_left, col_neo_right = st.columns([1, 1])
+            with col_neo_left:
+                st.markdown("#### Heuristic Scientific Breakdown")
+                st.plotly_chart(plot_heuristic_radar(sel_val.heuristic_breakdown), use_container_width=True)
+                st.markdown("**Diagnostic Explanations & Triggers:**")
+                for rec in sel_val.recommendations:
+                    st.info(rec)
+
+            with col_neo_right:
+                st.markdown("#### Heliocentric Keplerian Orbit (3D)")
+                st.plotly_chart(plot_3d_orbit(sel_cand), use_container_width=True)
+                elems = sel_cand.orbital_elements
+                if elems:
+                    st.markdown(
+                        f"**Semi-Major Axis (a):** `{elems.semi_major_axis_au:.3f} AU` | "
+                        f"**Eccentricity (e):** `{elems.eccentricity:.3f}` | "
+                        f"**Inclination (i):** `{elems.inclination_deg:.1f}°`"
+                    )
+                    st.markdown(
+                        f"**Perihelion (q):** `{elems.perihelion_dist_au:.3f} AU` | "
+                        f"**Tisserand Parameter (T_J):** `{elems.tisserand_jupiter:.2f}` | "
+                        f"**MOID:** `{elems.moid_au:.4f} AU`" if elems.moid_au else ""
+                    )
 
 
 elif app_mode == "⏳ 6-Month Re-Validation Lab":

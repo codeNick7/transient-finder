@@ -11,6 +11,10 @@ FIXTURES_DIR = DATA_DIR / "fixtures"
 for d in [DATA_DIR, CACHE_DIR, FIXTURES_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
+import os
+os.environ.setdefault("ASTROPY_CACHE_DIR", str(CACHE_DIR / "astropy"))
+os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_DIR))
+
 
 class ValidationThresholds(BaseModel):
     # Astrometry & Kinematics

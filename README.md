@@ -2,7 +2,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://transient-finder.streamlit.app)
-[![Tests Passing](https://img.shields.io/badge/tests-22%20passed-brightgreen.svg)]()
+[![Tests Passing](https://img.shields.io/badge/tests-29%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Edge AI Ready](https://img.shields.io/badge/Edge%20AI-Laptop%20Native-orange.svg)]()
 
@@ -118,10 +118,12 @@ gantt
 
 ## 🌟 Key System Capabilities
 
-1. **Multi-Feed Astronomical Ingestion:**
+1. **Multi-Feed Astronomical Ingestion & Ephemerides:**
+   - **NASA JPL Horizons Ephemerides & Target Query (`astroquery.jplhorizons`):** On-demand high-precision ephemerides, 3-sigma positional uncertainties, and orbital state vectors for designated small bodies (e.g. `1998 KY26`, `2024 YR4`, `Apophis`).
+   - **On-Demand Sky Patch Search (Cone Search):** Target any celestial field defined by an `(RA, Dec)` coordinate pair and search radius. Automatically aggregates and cross-validates both moving NEO candidates and stationary distant astrophysical transients.
    - **NASA JPL CNEOS Scout API:** Live real-time scoring, hazard ratings, and Monte Carlo orbital covariance samples.
    - **Minor Planet Center (MPC) NEOCP:** Live Near-Earth Object Confirmation Page tracklet ingestion.
-   - **Fink Broker (ZTF & Rubin LSST):** Ingestion of freshly linked Solar System Object (SSO) candidates from Fink-FAT.
+   - **Fink Broker (ZTF & Rubin LSST):** Ingestion of freshly linked Solar System Object (SSO) candidates from Fink-FAT and time-domain alert streams.
    - **NASA JPL Close Approach Data (CAD) & SBDB:** Historical candidate recovery and longitudinal tracking for candidates submitted ~6 months ago (e.g., May 2026 objects like `2026 HX3`, `2026 HY3`).
    - **Stale-While-Revalidate Caching & 195-Object Snapshot:** Transparent disk caching and persistent real-candidate telemetry ensure full functionality even with intermittent or zero internet connectivity.
 
@@ -189,13 +191,19 @@ Open your browser at `http://localhost:8501`.
 Perform rapid terminal-based audits using the `rich` CLI:
 
 ```fish
-# Ingest and validate live candidates from NASA JPL Scout & MPC
+# 1. On-demand sky patch cone search (RA & Dec) for NEOs & distant transients
+./.venv/bin/python3 cli/main.py patch --ra 315.0 --dec -6.27 --radius 1.5 --target "1998 KY26"
+
+# 2. Query distant supernova field (SN 2024ggi in NGC 3621)
+./.venv/bin/python3 cli/main.py patch --ra 168.03 --dec -10.52 --radius 2.0
+
+# 3. Ingest and validate live candidates from NASA JPL Scout & MPC
 ./.venv/bin/python3 cli/main.py live --limit 10
 
-# Run 6-month historical re-validation audit (e.g. May 2026 close approaches)
+# 4. Run 6-month historical re-validation audit (e.g. May 2026 close approaches)
 ./.venv/bin/python3 cli/main.py historical --limit 5
 
-# Run benchmark ground-truth test suite
+# 5. Run benchmark ground-truth test suite
 ./.venv/bin/python3 cli/main.py benchmark
 ```
 
@@ -205,10 +213,15 @@ Launch the microservice API server for automated survey ingestion pipelines:
 ```fish
 ./.venv/bin/uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 ```
-Interactive OpenAPI documentation will be available at: `http://localhost:8000/docs`.
+Interactive OpenAPI documentation will be available at: `http://localhost:8000/docs`. Key endpoints include:
+- `POST /api/sky-patch/query`: On-demand cone search query by RA, Dec, and Radius.
+- `GET /api/sky-patch/search`: Quick search with query parameters (`?ra=315.0&dec=-6.27&radius=1.5`).
+- `GET /api/horizons/ephemerides`: Fetch NASA JPL Horizons ephemerides for designated targets (`?target_id=1998+KY26`).
+- `GET /api/candidates/live`: Stream real-time unconfirmed candidates.
+- `POST /api/validate`: Execute full multi-tier AI validation on any candidate.
 
 ### 5. Execute Test Suite
-Run the full automated test suite (22 unit & integration tests):
+Run the full automated test suite (29 unit & integration tests):
 
 ```fish
 ./.venv/bin/pytest tests/
@@ -220,15 +233,17 @@ Run the full automated test suite (22 unit & integration tests):
 
 ```
 Transient-finder/
-├── requirements.txt            # Python 3.9+ pinned dependencies
+├── requirements.txt            # Python 3.9+ pinned dependencies (including astroquery)
 ├── config.py                   # Configuration & physical heuristic thresholds
 ├── pytest.ini                  # Pytest configuration with automatic pythonpath
 ├── core/
-│   ├── models.py               # Pydantic data schemas for candidates & diagnostics
-│   ├── astronomy.py            # Coordinate transformations, solar elongation, Tisserand, families
+│   ├── models.py               # Pydantic data schemas for candidates, sky patches & distant transients
+│   ├── astronomy.py            # Great-circle angular distance, solar elongation, Tisserand, families
 │   └── orbit_evaluator.py      # Polynomial tracklet fitting, residuals, ephemeris drift
 ├── ingestion/
 │   ├── base.py                 # Abstract client with stale-while-revalidate disk caching & retries
+│   ├── jpl_horizons.py         # NASA JPL Horizons ephemerides & target query client (astroquery)
+│   ├── sky_patch.py            # On-demand sky patch cone search & multi-source aggregator
 │   ├── jpl_scout.py            # NASA JPL CNEOS Scout API client
 │   ├── mpc_neocp.py            # Minor Planet Center NEOCP bulletin feed parser
 │   ├── fink_broker.py          # Fink broker client for ZTF/LSST solar system candidates
@@ -244,14 +259,19 @@ Transient-finder/
 │   ├── anomaly_detector.py     # Unsupervised Isolation Forest for interstellar interlopers
 │   ├── false_positive_analyzer.py # Root-cause diagnostic classifier
 │   ├── revalidation_engine.py  # 6-month longitudinal recovery & drift evaluator
-│   └── validator.py            # Master validation orchestrator
+│   └── validator.py            # Master validation orchestrator (NEOs & Distant Transients)
 ├── api/
-│   └── server.py               # FastAPI microservice application
+│   └── server.py               # FastAPI REST microservice (Sky Patch, Horizons, Validation)
 ├── ui/
-│   └── app.py                  # Interactive Streamlit Web UI dashboard
+│   └── app.py                  # Interactive Streamlit Web UI dashboard (including Sky Patch Search)
 ├── cli/
-│   └── main.py                 # Rich CLI application
-├── tests/                      # 22 automated unit and integration tests (100% passing)
+│   └── main.py                 # Rich CLI application (including on-demand patch subcommand)
+├── tests/                      # 29 automated unit and integration tests (100% passing)
+│   ├── test_sky_patch.py       # Sky patch cone search, Horizons, and distant transient tests
+│   ├── test_ingestion.py       # Public observatory stream ingestion tests
+│   ├── test_heuristics.py      # 5-Pillar heuristic scoring tests
+│   ├── test_revalidation.py    # 6-month longitudinal recovery tests
+│   └── test_api_cli.py         # REST API and CLI integration tests
 └── docs/                       # Comprehensive scientific and architectural documentation
     ├── RESEARCH_FINDINGS.md    # Detailed research findings document
     ├── SYSTEM_APPROACH.md      # System approach & heuristic methodology document
